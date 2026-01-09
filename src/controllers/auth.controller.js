@@ -18,8 +18,12 @@ exports.emailLogin = async (req, res) => {
 };
 
 exports.sendMobileOTP = async (req, res) => {
-  await service.sendMobileOTP(req.body.mobile);
-  res.json({ success: true });
+  try {
+    await service.sendMobileOTP(req.body.mobile);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
 };
 
 exports.verifyMobileOTP = async (req, res) => {
@@ -38,6 +42,7 @@ exports.signup = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
+
 exports.googleLogin = async (req, res) => {
   try {
     const { token } = req.body; // Google ID token

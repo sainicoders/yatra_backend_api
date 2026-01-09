@@ -7,6 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID
 );
+
 /* EMAIL CHECK */
 exports.checkEmail = async (email) => {
   const user = await User.findOne({ where: { email } });
@@ -44,20 +45,34 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     where: { target: mobile, otp, verified: false },
   });
 
-  if (!record || record.expires_at < new Date())
+  if (!record || record.expires_at < new Date()) {
     throw new Error("Invalid OTP");
+  }
 
   record.verified = true;
   await record.save();
 
   let user = await User.findOne({ where: { mobile } });
 
+  // 🔹 NEW USER
   if (!user) {
-    user = await User.create({ mobile, is_mobile_verified: true });
-    return { next: "SIGNUP", userId: user.id };
+    user = await User.create({
+      mobile,
+      is_mobile_verified: true,
+    });
+
+    return {
+      next: "SIGNUP",
+      userId: user.id, // ✅ IMPORTANT: always return userId
+    };
   }
 
-  return { token: generateToken(user) };
+  // 🔹 EXISTING USER
+  return {
+    next: "LOGIN",
+    userId: user.id, // ✅ IMPORTANT: added (was missing)
+    token: generateToken(user),
+  };
 };
 
 /* FINAL SIGNUP */
@@ -84,6 +99,7 @@ exports.completeSignup = async (data) => {
     gst_number: data.gst_number,
     company_name: data.company_name,
     company_address: data.company_address,
+
     city: data.city,
     state: data.state,
     pincode: data.pincode,
@@ -96,6 +112,7 @@ exports.completeSignup = async (data) => {
 
   return generateToken(user);
 };
+
 
 
 /* ================= GOOGLE LOGIN ================= */
