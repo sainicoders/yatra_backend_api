@@ -37,7 +37,7 @@ exports.sendEmailOTP = async (email) => {
     expires_at: new Date(Date.now() + 15 * 60 * 1000),
   });
 
-  console.log("📧 Email OTP:", otp);
+  console.log(" Email OTP:", otp);
 };
 
 exports.verifyEmailOTP = async ({ email, otp }) => {
@@ -72,34 +72,47 @@ exports.sendMobileOTP = async (mobile) => {
 
 exports.verifyMobileOTP = async ({ mobile, otp }) => {
   const record = await OTP.findOne({
-    where: { target: mobile, otp, verified: false },
+    where: {
+      target: mobile,
+      otp,
+      verified: false,
+    },
   });
 
   if (!record || record.expires_at < new Date()) {
     throw new Error("Invalid OTP");
   }
 
+  // ✅ OTP can be used only once
   record.verified = true;
   await record.save();
 
   let user = await User.findOne({ where: { mobile } });
 
-  // FIRST TIME MOBILE USER
+  // 🔹 FIRST TIME MOBILE USER → SIGNUP
   if (!user) {
     user = await User.create({
       mobile,
       is_mobile_verified: true,
     });
 
-    return { next: "SIGNUP", userId: user.id };
+    return {
+      next: "SIGNUP",
+      userId: user.id,
+    };
   }
 
-  // EXISTING USER
+  // 🔹 EXISTING USER → VERIFY & LOGIN
+  if (!user.is_mobile_verified) {
+    await user.update({ is_mobile_verified: true });
+  }
+
   return {
     next: "LOGIN",
     token: generateToken(user),
   };
 };
+
 
 /* ================= FINAL SIGNUP ================= */
 exports.completeSignup = async (data) => {
