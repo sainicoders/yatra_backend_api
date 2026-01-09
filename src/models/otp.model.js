@@ -8,16 +8,6 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
       },
 
-      user_id: {
-        type: DataTypes.UUID,
-        allowNull: true,
-        references: {
-          model: "users",
-          key: "id",
-        },
-        onDelete: "CASCADE",
-      },
-
       target: {
         type: DataTypes.STRING,
         allowNull: false,
