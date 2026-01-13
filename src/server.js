@@ -1,5 +1,5 @@
 require("dotenv").config();
-
+require("./cron");
 const app = require("./app");
 const { sequelize } = require("./models");
 
