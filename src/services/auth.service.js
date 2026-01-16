@@ -100,6 +100,28 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
 
 /* ================= MOBILE OTP ================= */
+// exports.sendMobileOTP = async (mobile) => {
+//   const otp = generateOTP();
+
+//   await OTP.destroy({
+//     where: { target: mobile, purpose: "MOBILE_AUTH" },
+//   });
+
+//   await OTP.create({
+//     target: mobile,
+//     otp,
+//     purpose: "MOBILE_AUTH",
+//     expires_at: new Date(Date.now() + 10 * 60 * 1000),
+//   });
+
+//   await sendSMS(mobile, `Your OTP is ${otp}`);
+
+//   return { message: "OTP sent to mobile",otp };
+// };
+
+
+
+// for testing 
 exports.sendMobileOTP = async (mobile) => {
   const otp = generateOTP();
 
@@ -114,9 +136,18 @@ exports.sendMobileOTP = async (mobile) => {
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
-  await sendSMS(mobile, `Your OTP is ${otp}`);
+  // 🔥 TEMP FLAG (live me bhi control)
+  const exposeOTP = process.env.EXPOSE_OTP === "true";
 
-  return { message: "OTP sent to mobile" };
+  // SMS future ke liye
+  if (!exposeOTP) {
+    await sendSMS(mobile, `Your OTP is ${otp}`);
+  }
+
+  return {
+    message: "OTP sent",
+    ...(exposeOTP && { otp }), // ✅ frontend ko milega
+  };
 };
 
 exports.verifyMobileOTP = async ({ mobile, otp }) => {
