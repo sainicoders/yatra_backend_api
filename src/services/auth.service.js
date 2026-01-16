@@ -126,9 +126,11 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 exports.sendMobileOTPService = async (mobile) => {
   const otp = generateOTP();
 
+  
   await OTP.destroy({
     where: { target: mobile, purpose: "MOBILE_AUTH" },
   });
+
 
   await OTP.create({
     target: mobile,
@@ -137,15 +139,10 @@ exports.sendMobileOTPService = async (mobile) => {
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
-  const exposeOTP = process.env.EXPOSE_OTP === "true";
-
-  if (!exposeOTP) {
-    await sendSMS(mobile, `Your OTP is ${otp}`);
-  }
-
+ 
   return {
     message: "OTP sent",
-    ...(exposeOTP && { otp }),
+    otp, 
   };
 };
 

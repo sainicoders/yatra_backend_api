@@ -72,7 +72,7 @@ exports.sendMobileOTP = async (req, res) => {
 
   return res.json({
     success: true,
-    data,
+    data, 
   });
 };
 exports.verifyMobileOTP = async (req, res) => {
