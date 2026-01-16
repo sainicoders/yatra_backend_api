@@ -69,7 +69,7 @@ exports.sendMobileOTP = async (req, res) => {
     return res.status(400).json({ message: "Mobile required" });
   }
 
-  const data = await otpService.sendMobileOTP(req.body.mobile);
+  const data = await service.sendMobileOTP(req.body.mobile);
 
   return res.json({
     success: true,
