@@ -1,5 +1,5 @@
 const service = require("../services/auth.service");
-const otpService = require("../services/auth.service");
+
 exports.checkEmail = async (req, res) => {
   if (!req.body.email) {
     return res.status(400).json({ message: "Email required" });
@@ -50,31 +50,36 @@ exports.verifyEmailOTP = async (req, res) => {
   }
 };
 
-// exports.sendMobileOTP = async (req, res) => {
-//   if (!req.body.mobile) {
-//     return res.status(400).json({ message: "Mobile required" });
-//   }
+exports.sendMobileOTP = async (req, res, next) => {
+  try {
+    const { mobile } = req.body;
 
-//   try {
-//     await service.sendMobileOTP(req.body.mobile);
-//     res.json({ success: true });
-//   } catch (e) {
-//     res.status(400).json({ message: e.message });
-//   }
-// };
+    if (!mobile) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile required",
+      });
+    }
 
-exports.sendMobileOTP = async (req, res) => {
-  if (!req.body.mobile) {
-    return res.status(400).json({ message: "Mobile required" });
+    const data = await service.sendMobileOTP(mobile);
+
+    return res.status(200).json({
+      success: true,
+      data, // { message, otp }
+    });
+  } catch (err) {
+    console.error("SEND OTP ERROR:", err);
+
+    // simple response (without global handler)
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to send OTP",
+    });
+
+    
   }
-
-  const data = await otpService.sendMobileOTPService(req.body.mobile);
-
-  return res.json({
-    success: true,
-    data, 
-  });
 };
+
 exports.verifyMobileOTP = async (req, res) => {
   if (!req.body.mobile || !req.body.otp) {
     return res.status(400).json({ message: "Mobile and OTP required" });

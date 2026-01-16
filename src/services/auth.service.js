@@ -100,37 +100,12 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
 
 /* ================= MOBILE OTP ================= */
-// exports.sendMobileOTP = async (mobile) => {
-//   const otp = generateOTP();
-
-//   await OTP.destroy({
-//     where: { target: mobile, purpose: "MOBILE_AUTH" },
-//   });
-
-//   await OTP.create({
-//     target: mobile,
-//     otp,
-//     purpose: "MOBILE_AUTH",
-//     expires_at: new Date(Date.now() + 10 * 60 * 1000),
-//   });
-
-//   await sendSMS(mobile, `Your OTP is ${otp}`);
-
-//   return { message: "OTP sent to mobile",otp };
-// };
-
-
-
-// for testing 
-
-exports.sendMobileOTPService = async (mobile) => {
+exports.sendMobileOTP = async (mobile) => {
   const otp = generateOTP();
 
-  
   await OTP.destroy({
     where: { target: mobile, purpose: "MOBILE_AUTH" },
   });
-
 
   await OTP.create({
     target: mobile,
@@ -139,12 +114,11 @@ exports.sendMobileOTPService = async (mobile) => {
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
- 
-  return {
-    message: "OTP sent",
-    otp, 
-  };
+  await sendSMS(mobile, `Your OTP is ${otp}`);
+
+  return { message: "OTP sent to mobile",otp };
 };
+
 
 
 
