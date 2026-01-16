@@ -122,7 +122,8 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
 
 // for testing 
-exports.sendMobileOTP = async (mobile) => {
+
+exports.sendMobileOTPService = async (mobile) => {
   const otp = generateOTP();
 
   await OTP.destroy({
@@ -136,19 +137,19 @@ exports.sendMobileOTP = async (mobile) => {
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
-  // 🔥 TEMP FLAG (live me bhi control)
   const exposeOTP = process.env.EXPOSE_OTP === "true";
 
-  // SMS future ke liye
   if (!exposeOTP) {
     await sendSMS(mobile, `Your OTP is ${otp}`);
   }
 
   return {
     message: "OTP sent",
-    ...(exposeOTP && { otp }), // ✅ frontend ko milega
+    ...(exposeOTP && { otp }),
   };
 };
+
+
 
 exports.verifyMobileOTP = async ({ mobile, otp }) => {
   const record = await OTP.findOne({

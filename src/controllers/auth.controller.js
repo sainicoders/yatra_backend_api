@@ -1,5 +1,5 @@
 const service = require("../services/auth.service");
-
+const otpService = require("../services/auth.service");
 exports.checkEmail = async (req, res) => {
   if (!req.body.email) {
     return res.status(400).json({ message: "Email required" });
@@ -63,21 +63,18 @@ exports.verifyEmailOTP = async (req, res) => {
 //   }
 // };
 
-
 exports.sendMobileOTP = async (req, res) => {
   if (!req.body.mobile) {
     return res.status(400).json({ message: "Mobile required" });
   }
 
-  const data = await service.sendMobileOTP(req.body.mobile);
+  const data = await otpService.sendMobileOTPService(req.body.mobile);
 
   return res.json({
     success: true,
-    data, 
+    data,
   });
 };
-
-
 exports.verifyMobileOTP = async (req, res) => {
   if (!req.body.mobile || !req.body.otp) {
     return res.status(400).json({ message: "Mobile and OTP required" });
