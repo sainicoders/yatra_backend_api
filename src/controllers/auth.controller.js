@@ -50,17 +50,31 @@ exports.verifyEmailOTP = async (req, res) => {
   }
 };
 
+// exports.sendMobileOTP = async (req, res) => {
+//   if (!req.body.mobile) {
+//     return res.status(400).json({ message: "Mobile required" });
+//   }
+
+//   try {
+//     await service.sendMobileOTP(req.body.mobile);
+//     res.json({ success: true });
+//   } catch (e) {
+//     res.status(400).json({ message: e.message });
+//   }
+// };
+
+
 exports.sendMobileOTP = async (req, res) => {
   if (!req.body.mobile) {
     return res.status(400).json({ message: "Mobile required" });
   }
 
-  try {
-    await service.sendMobileOTP(req.body.mobile);
-    res.json({ success: true });
-  } catch (e) {
-    res.status(400).json({ message: e.message });
-  }
+  const data = await otpService.sendMobileOTP(req.body.mobile);
+
+  return res.json({
+    success: true,
+    data, 
+  });
 };
 
 
