@@ -125,20 +125,20 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
       target: mobile,
       otp,
       purpose: "MOBILE_AUTH",
-      verified: false,
+      expires_at: { [Op.gt]: new Date() }, // ✅ expiry check at DB
     },
   });
 
-  if (!record || record.expires_at < new Date()) {
+  if (!record) {
     throw new Error("INVALID_OR_EXPIRED_OTP");
   }
 
-  
+  // ✅ OTP can be used only once
   await record.destroy();
 
   let user = await User.findOne({ where: { mobile } });
 
-  // 🆕 NOT REGISTERED → SIGNUP
+  // 🆕 First time user → create once
   if (!user) {
     user = await User.create({
       mobile,
@@ -151,7 +151,7 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     };
   }
 
-  // ✅ REGISTERED → LOGIN
+  // ✅ Existing user
   if (!user.is_mobile_verified) {
     await user.update({ is_mobile_verified: true });
   }
@@ -162,6 +162,7 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
   };
 };
 
+
 exports.completeSignup = async (data) => {
   const user = await User.findByPk(data.userId);
   if (!user) throw new Error("INVALID_USER");
@@ -170,23 +171,12 @@ exports.completeSignup = async (data) => {
     throw new Error("INVALID_ROLE");
   }
 
-  if (data.role === "PERSONAL" && !data.full_name) {
-    throw new Error("FULL_NAME_REQUIRED");
-  }
-
-  if (
-    data.role === "SME" &&
-    (!data.company_name || !data.gst_number)
-  ) {
-    throw new Error("SME_DETAILS_REQUIRED");
-  }
-
   const hash = await bcrypt.hash(data.password, 10);
 
   await user.update({
     email: data.email,
-    role: data.role,
     password: hash,
+    role: data.role,
 
     full_name: data.full_name,
     gender: data.gender,
@@ -198,13 +188,14 @@ exports.completeSignup = async (data) => {
     city: data.city,
     state: data.state,
     pincode: data.pincode,
-
-    promo_optin: data.promo_optin,
-    whatsapp_optin: data.whatsapp_optin,
   });
 
-  return { token: generateToken(user) };
+  return {
+    token: generateToken(user),
+  };
 };
+
+
 
 
 

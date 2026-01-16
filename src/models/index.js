@@ -7,7 +7,7 @@ db.User = require("./user.model")(sequelize, DataTypes);
 db.OTP = require("./otp.model")(sequelize, DataTypes);
 
 /* relations */
-db.User.hasMany(db.OTP, { foreignKey: "user_id" });
+db.User.hasMany(db.OTP, { foreignKey: "user_id", onDelete: "CASCADE", });
 db.OTP.belongsTo(db.User, { foreignKey: "user_id" });
 
 db.sequelize = sequelize;
