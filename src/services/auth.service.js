@@ -48,11 +48,16 @@ exports.sendEmailOTP = async (email) => {
 
   const otp = generateOTP();
 
+  // remove old OTP
   await OTP.destroy({
-    where: { target: email,  user_id: user.id, purpose: "EMAIL_LOGIN" },
+    where: {
+      target: email,
+      user_id: user.id,
+      purpose: "EMAIL_LOGIN",
+    },
   });
-  
 
+  // save new OTP
   await OTP.create({
     user_id: user.id,
     target: email,
@@ -61,14 +66,16 @@ exports.sendEmailOTP = async (email) => {
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
+  // send email (SendGrid Web API)
   await sendEmail({
     to: email,
     subject: "Your Login OTP",
-    html: emailOTPTemplate(otp),
+    html: emailOTPTemplate(otp), 
   });
 
   return { message: "OTP sent to email" };
 };
+
 
 
 /* ================= VERIFY EMAIL OTP ================= */
