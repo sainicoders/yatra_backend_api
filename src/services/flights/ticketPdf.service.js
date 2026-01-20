@@ -1,4 +1,4 @@
-// src/services/flights/ticketPdf.service.js
+
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
@@ -27,7 +27,7 @@ exports.generateTicketPDF = async (booking) => {
   /* ===== HEADER ===== */
   doc
     .fontSize(20)
-    .text("✈️ YATRA FLIGHT TICKET", { align: "center" })
+    .text("YATRA FLIGHT TICKET", { align: "center" })
     .moveDown(0.5);
 
   doc
@@ -69,17 +69,25 @@ exports.generateTicketPDF = async (booking) => {
   doc.text(`Status: ${booking.booking_status}`);
   doc.moveDown(1);
 
-  /* ===== QR CODE (NO DISK WRITE) ===== */
+  /* ===== QR CODE (FINAL & SCANNABLE) ===== */
   const qrData = `PNR:${booking.pnr}|BOOKING:${booking.id}`;
-  const qrImage = await QRCode.toDataURL(qrData);
 
-  doc.image(qrImage, {
+  const qrBuffer = await QRCode.toBuffer(qrData, {
+    type: "png",
+    errorCorrectionLevel: "H", // 🔥 High reliability
+    margin: 1,
+    scale: 6, // 🔥 Perfect scan size
+  });
+
+  doc.image(qrBuffer, {
     fit: [120, 120],
     align: "center",
   });
 
   doc.moveDown(0.5);
-  doc.fontSize(9).text("Scan QR at airport check-in", { align: "center" });
+  doc.fontSize(9).text("Scan QR at airport check-in", {
+    align: "center",
+  });
 
   /* ===== FOOTER ===== */
   doc.moveDown(1);
