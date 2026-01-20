@@ -11,7 +11,7 @@ const { sendSMS } = require("../utils/sms");
 
 /* ================= EMAIL CHECK ================= */
 exports.checkEmail = async (email) => {
-  const user = await User.findOne({ where: { email } });
+  let user = await User.findOne({ where: { email } });
 
   if (user) {
     return {
@@ -20,11 +20,19 @@ exports.checkEmail = async (email) => {
     };
   }
 
+  // 🆕 CREATE TEMP USER
+  user = await User.create({
+    email,
+    signup_stage: "EMAIL_ENTERED",
+  });
+
   return {
     flow: "SIGNUP",
-    next: "MOBILE_OTP",
+    userId: user.id,
+    required: ["BASIC_DETAILS", "MOBILE_VERIFY"],
   };
 };
+
 
 
 
@@ -107,14 +115,18 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
 
 /* ================= MOBILE OTP ================= */
-exports.sendMobileOTP = async (mobile) => {
+exports.sendMobileOTP = async (mobile, userId = null) => {
   const otp = generateOTP();
 
   await OTP.destroy({
-    where: { target: mobile, purpose: "MOBILE_AUTH" },
+    where: {
+      target: mobile,
+      purpose: "MOBILE_AUTH",
+    },
   });
 
   await OTP.create({
+    user_id: userId,          // ✅ NOW STORED
     target: mobile,
     otp,
     purpose: "MOBILE_AUTH",
@@ -123,9 +135,8 @@ exports.sendMobileOTP = async (mobile) => {
 
   await sendSMS(mobile, `Your OTP is ${otp}`);
 
-  return { message: "OTP sent to mobile",otp };
+  return { message: "OTP sent to mobile" };
 };
-
 
 
 
@@ -135,7 +146,7 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
       target: mobile,
       otp,
       purpose: "MOBILE_AUTH",
-      expires_at: { [Op.gt]: new Date() }, // ✅ expiry check at DB
+      expires_at: { [Op.gt]: new Date() },
     },
   });
 
@@ -143,25 +154,26 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     throw new Error("INVALID_OR_EXPIRED_OTP");
   }
 
-  // ✅ OTP can be used only once
+  // OTP can be used only once
   await record.destroy();
 
   let user = await User.findOne({ where: { mobile } });
 
-  // 🆕 First time user → create once
+  // 🆕 FIRST TIME MOBILE USER
   if (!user) {
     user = await User.create({
       mobile,
       is_mobile_verified: true,
+      signup_stage: "MOBILE_VERIFIED",
     });
 
     return {
       flow: "SIGNUP",
-      userId: user.id,
+      userId: user.id, // 🔥 CRITICAL
     };
   }
 
-  // ✅ Existing user
+  // ✅ EXISTING USER
   if (!user.is_mobile_verified) {
     await user.update({ is_mobile_verified: true });
   }
@@ -173,18 +185,39 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 };
 
 
-exports.completeSignup = async (data) => {
-  const user = await User.findByPk(data.userId);
-  if (!user) throw new Error("INVALID_USER");
 
+
+exports.completeSignup = async (data) => {
+  let user = null;
+
+  // 1️⃣ If userId exists, trust only that
+  if (data.userId) {
+    user = await User.findByPk(data.userId);
+  }
+
+  // 2️⃣ If no userId, check by email (email-first signup)
+  if (!user) {
+    user = await User.findOne({ where: { email: data.email } });
+  }
+
+  // 3️⃣ If still not found → create
+  if (!user) {
+    user = await User.create({
+      email: data.email,
+      signup_stage: "BASIC_CREATED",
+    });
+  }
+
+  // 4️⃣ Validate role
   if (!["PERSONAL", "SME"].includes(data.role)) {
     throw new Error("INVALID_ROLE");
   }
 
+  // 5️⃣ Hash password
   const hash = await bcrypt.hash(data.password, 10);
 
+  // 6️⃣ Update profile (DO NOT verify mobile here)
   await user.update({
-    email: data.email,
     password: hash,
     role: data.role,
 
@@ -198,12 +231,21 @@ exports.completeSignup = async (data) => {
     city: data.city,
     state: data.state,
     pincode: data.pincode,
+
+    mobile: data.mobile,
+    is_mobile_verified: true, // 🔒 MUST VERIFY VIA OTP
   });
 
+  // 7️⃣ Send mobile OTP
+    await exports.sendMobileOTP(data.mobile);
+
   return {
-    token: generateToken(user),
+    next: "MOBILE_OTP",
+    userId: user.id,
+    message: "Signup completed. OTP sent to mobile.",
   };
 };
+
 
 
 
