@@ -123,7 +123,6 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
   const record = await OTP.findOne({
     where: {
-      user_id: emailUser.id,
       target: email,
       otp,
       purpose: "EMAIL_LOGIN",
@@ -135,7 +134,7 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
   await record.destroy();
 
-  // ✅ CASE 1: Email user already completed
+  // ✅ CASE 1: already completed
   if (emailUser.signup_stage === "COMPLETED") {
     return {
       flow: "LOGIN",
@@ -143,7 +142,7 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
     };
   }
 
-  // 🔥 CASE 2: Find completed MOBILE user
+  // 🔥 CASE 2: merge into completed mobile user
   const mobileUser = await User.findOne({
     where: {
       signup_stage: "COMPLETED",
@@ -152,14 +151,13 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
   });
 
   if (mobileUser) {
-    // 🔗 MERGE EMAIL INTO MOBILE USER
+    // 🔥 VERY IMPORTANT ORDER
+    await emailUser.destroy();
+
     await mobileUser.update({
-      email: emailUser.email,
+      email,
       is_email_verified: true,
     });
-
-    // 🧹 REMOVE TEMP EMAIL USER
-    await emailUser.destroy();
 
     return {
       flow: "LOGIN",
@@ -167,13 +165,14 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
     };
   }
 
-  // ❌ CASE 3: Truly incomplete user
+  // ❌ CASE 3: resume signup
   return {
     flow: "SIGNUP_RESUME",
     userId: emailUser.id,
     next: "BASIC_DETAILS",
   };
 };
+
 
 
 
