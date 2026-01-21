@@ -40,9 +40,6 @@ exports.checkEmail = async (email) => {
 };
 
 
-
-
-
 /* ================= EMAIL LOGIN (PASSWORD) ================= */
 exports.emailLogin = async ({ email, password }) => {
   const user = await User.findOne({ where: { email } });
@@ -161,12 +158,12 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     throw new Error("INVALID_OR_EXPIRED_OTP");
   }
 
-  // OTP can be used only once
+  // OTP one-time use
   await record.destroy();
 
   let user = await User.findOne({ where: { mobile } });
 
-  // 🆕 FIRST TIME MOBILE USER
+  /* ================= FIRST TIME MOBILE ================= */
   if (!user) {
     user = await User.create({
       mobile,
@@ -176,24 +173,35 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 
     return {
       flow: "SIGNUP",
-      userId: user.id, // 🔥 CRITICAL
+      userId: user.id,
+      next: "BASIC_DETAILS",
     };
   }
 
-  // ✅ EXISTING USER
+  /* ================= EXISTING USER ================= */
   if (!user.is_mobile_verified) {
     await user.update({
-  is_mobile_verified: true,
-  signup_stage: "COMPLETED",
-});
-
+      is_mobile_verified: true,
+    });
   }
 
+  // 🔥 🔥 🔥 MAIN FIX
+  // ❌ DO NOT LOGIN IF SIGNUP NOT COMPLETED
+  if (user.signup_stage !== "COMPLETED") {
+    return {
+      flow: "SIGNUP_RESUME",
+      userId: user.id,
+      next: "BASIC_DETAILS",
+    };
+  }
+
+  // ✅ ONLY HERE LOGIN IS ALLOWED
   return {
     flow: "LOGIN",
     token: generateToken(user),
   };
 };
+
 
 
 function validateSignupData(data) {
@@ -296,7 +304,6 @@ exports.googleLogin = async (googleToken) => {
 
   let user = await User.findOne({ where: { email } });
 
-  // 🆕 First time Google user
   if (!user) {
     user = await User.create({
       email,
@@ -313,12 +320,10 @@ exports.googleLogin = async (googleToken) => {
     };
   }
 
-  // 🚫 Provider mismatch
   if (user.auth_provider && user.auth_provider !== "GOOGLE") {
     throw new Error("USE_EMAIL_PASSWORD_LOGIN");
   }
 
-  // 🔄 Resume incomplete signup
   if (user.signup_stage !== "COMPLETED") {
     return {
       flow: "SIGNUP_RESUME",
@@ -327,7 +332,6 @@ exports.googleLogin = async (googleToken) => {
     };
   }
 
-  // ✅ Fully registered → login
   const token = generateToken(user);
 
   return {

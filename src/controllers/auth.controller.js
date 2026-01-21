@@ -102,7 +102,7 @@ exports.signup = async (req, res) => {
 /* ================= GOOGLE LOGIN ================= */
 exports.googleLogin = async (req, res) => {
   try {
-    const { googleToken } = req.body;
+    const googleToken = req.body.googleToken || req.body.token;
 
     if (!googleToken) {
       return res.status(400).json({
@@ -130,5 +130,6 @@ exports.googleLogin = async (req, res) => {
     });
   }
 };
+
 
 
