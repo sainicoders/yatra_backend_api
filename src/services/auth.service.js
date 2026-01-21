@@ -9,29 +9,36 @@ const { emailOTPTemplate } = require("../utils/emailTemplates");
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const { sendSMS } = require("../utils/sms");
 
+
 /* ================= EMAIL CHECK ================= */
 exports.checkEmail = async (email) => {
-  let user = await User.findOne({ where: { email } });
+  const user = await User.findOne({ where: { email } });
 
+  // 🟢 Case 1: User exists
   if (user) {
+    
+    if (user.signup_stage !== "COMPLETED") {
+      return {
+        flow: "SIGNUP_RESUME",
+        userId: user.id,
+        next: "MOBILE_OTP",
+      };
+    }
+
+    // ✅ Fully registered user
     return {
       flow: "LOGIN",
       methods: ["PASSWORD", "EMAIL_OTP"],
     };
   }
 
-  // 🆕 CREATE TEMP USER
-  user = await User.create({
-    email,
-    signup_stage: "EMAIL_ENTERED",
-  });
-
+  // 🟢 Case 2: New email
   return {
     flow: "SIGNUP",
-    userId: user.id,
-    required: ["BASIC_DETAILS", "MOBILE_VERIFY"],
+    next: "BASIC_DETAILS",
   };
 };
+
 
 
 
@@ -135,7 +142,7 @@ exports.sendMobileOTP = async (mobile, userId = null) => {
 
   await sendSMS(mobile, `Your OTP is ${otp}`);
 
-  return { message: "OTP sent to mobile" };
+  return { message: "OTP sent to mobile",otp };
 };
 
 
@@ -175,7 +182,11 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 
   // ✅ EXISTING USER
   if (!user.is_mobile_verified) {
-    await user.update({ is_mobile_verified: true });
+    await user.update({
+  is_mobile_verified: true,
+  signup_stage: "COMPLETED",
+});
+
   }
 
   return {
@@ -185,6 +196,20 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 };
 
 
+function validateSignupData(data) {
+  if (!data.password) throw new Error("PASSWORD_REQUIRED");
+  if (!data.mobile) throw new Error("MOBILE_REQUIRED");
+
+  if (data.role === "PERSONAL") {
+    if (!data.full_name) throw new Error("FULL_NAME_REQUIRED");
+  }
+
+  if (data.role === "SME") {
+    if (!data.company_name) throw new Error("COMPANY_NAME_REQUIRED");
+    if (!data.gst_number) throw new Error("GST_NUMBER_REQUIRED");
+    if (!data.company_address) throw new Error("COMPANY_ADDRESS_REQUIRED");
+  }
+}
 
 
 exports.completeSignup = async (data) => {
@@ -212,7 +237,7 @@ exports.completeSignup = async (data) => {
   if (!["PERSONAL", "SME"].includes(data.role)) {
     throw new Error("INVALID_ROLE");
   }
-
+validateSignupData(data);
   // 5️⃣ Hash password
   const hash = await bcrypt.hash(data.password, 10);
 
@@ -233,7 +258,7 @@ exports.completeSignup = async (data) => {
     pincode: data.pincode,
 
     mobile: data.mobile,
-    is_mobile_verified: true, // 🔒 MUST VERIFY VIA OTP
+    is_mobile_verified: false, // 🔒 MUST VERIFY VIA OTP
   });
 
   // 7️⃣ Send mobile OTP
@@ -298,3 +323,6 @@ exports.googleLogin = async (googleToken) => {
     },
   };
 };
+
+
+
