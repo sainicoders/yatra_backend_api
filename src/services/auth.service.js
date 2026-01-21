@@ -280,11 +280,8 @@ validateSignupData(data);
 
 /* ================= GOOGLE LOGIN ================= */
 exports.googleLogin = async (googleToken) => {
-  if (!googleToken) {
-    throw new Error("GOOGLE_TOKEN_REQUIRED");
-  }
+  if (!googleToken) throw new Error("GOOGLE_TOKEN_REQUIRED");
 
-  // 1️⃣ Verify Google ID token
   const ticket = await googleClient.verifyIdToken({
     idToken: googleToken,
     audience: process.env.GOOGLE_CLIENT_ID,
@@ -297,23 +294,44 @@ exports.googleLogin = async (googleToken) => {
     throw new Error("GOOGLE_EMAIL_NOT_VERIFIED");
   }
 
-  // 2️⃣ Find or create user
   let user = await User.findOne({ where: { email } });
 
+  // 🆕 First time Google user
   if (!user) {
     user = await User.create({
       email,
       full_name: name,
       is_email_verified: true,
-      role: "PERSONAL",
-      auth_provider: "GOOGLE", // ✅ optional but recommended
+      auth_provider: "GOOGLE",
+      signup_stage: "EMAIL_VERIFIED",
     });
+
+    return {
+      flow: "SIGNUP",
+      next: "MOBILE_OTP",
+      userId: user.id,
+    };
   }
 
-  // 3️⃣ Issue JWT
+  // 🚫 Provider mismatch
+  if (user.auth_provider && user.auth_provider !== "GOOGLE") {
+    throw new Error("USE_EMAIL_PASSWORD_LOGIN");
+  }
+
+  // 🔄 Resume incomplete signup
+  if (user.signup_stage !== "COMPLETED") {
+    return {
+      flow: "SIGNUP_RESUME",
+      next: "MOBILE_OTP",
+      userId: user.id,
+    };
+  }
+
+  // ✅ Fully registered → login
   const token = generateToken(user);
 
   return {
+    flow: "LOGIN",
     token,
     user: {
       id: user.id,
@@ -323,6 +341,7 @@ exports.googleLogin = async (googleToken) => {
     },
   };
 };
+
 
 
 

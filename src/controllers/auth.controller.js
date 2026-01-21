@@ -102,23 +102,33 @@ exports.signup = async (req, res) => {
 /* ================= GOOGLE LOGIN ================= */
 exports.googleLogin = async (req, res) => {
   try {
-    const { token } = req.body; // Google ID token from frontend
+    const { googleToken } = req.body;
 
-    if (!token) {
-      return res.status(400).json({ message: "Google token required" });
+    if (!googleToken) {
+      return res.status(400).json({
+        success: false,
+        message: "GOOGLE_TOKEN_REQUIRED",
+      });
     }
 
-    const data = await service.googleLogin(token);
+    const result = await service.googleLogin(googleToken);
 
-    res.json({
+    return res.status(200).json({
       success: true,
-      ...data,
+      ...result,
     });
   } catch (e) {
-    res.status(400).json({
+    const statusMap = {
+      GOOGLE_TOKEN_REQUIRED: 400,
+      GOOGLE_EMAIL_NOT_VERIFIED: 401,
+      USE_EMAIL_PASSWORD_LOGIN: 409,
+    };
+
+    return res.status(statusMap[e.message] || 500).json({
       success: false,
-      message: e.message,
+      message: e.message || "INTERNAL_SERVER_ERROR",
     });
   }
 };
+
 
