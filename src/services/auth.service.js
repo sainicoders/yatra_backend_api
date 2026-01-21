@@ -112,7 +112,19 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
   await record.destroy();
 
-  return { token: generateToken(user) };
+if (user.signup_stage !== "COMPLETED") {
+  return {
+    flow: "SIGNUP_RESUME",
+    userId: user.id,
+    next: "BASIC_DETAILS",
+  };
+}
+
+return {
+  flow: "LOGIN",
+  token: generateToken(user),
+};
+
 };
 
 
@@ -130,7 +142,7 @@ exports.sendMobileOTP = async (mobile, userId = null) => {
   });
 
   await OTP.create({
-    user_id: userId,          // ✅ NOW STORED
+    user_id: userId,
     target: mobile,
     otp,
     purpose: "MOBILE_AUTH",
@@ -139,7 +151,7 @@ exports.sendMobileOTP = async (mobile, userId = null) => {
 
   await sendSMS(mobile, `Your OTP is ${otp}`);
 
-  return { message: "OTP sent to mobile",otp };
+  return { message: "OTP sent to mobile" };
 };
 
 
@@ -154,16 +166,13 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     },
   });
 
-  if (!record) {
-    throw new Error("INVALID_OR_EXPIRED_OTP");
-  }
+  if (!record) throw new Error("INVALID_OR_EXPIRED_OTP");
 
-  // OTP one-time use
   await record.destroy();
 
   let user = await User.findOne({ where: { mobile } });
 
-  /* ================= FIRST TIME MOBILE ================= */
+  /* 🆕 FIRST TIME MOBILE */
   if (!user) {
     user = await User.create({
       mobile,
@@ -178,29 +187,25 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     };
   }
 
-  /* ================= EXISTING USER ================= */
+  /* ✅ EXISTING USER */
   if (!user.is_mobile_verified) {
-    await user.update({
-      is_mobile_verified: true,
-    });
+    await user.update({ is_mobile_verified: true });
   }
 
-  // 🔥 🔥 🔥 MAIN FIX
-  // ❌ DO NOT LOGIN IF SIGNUP NOT COMPLETED
-  if (user.signup_stage !== "COMPLETED") {
+  if (user.signup_stage === "COMPLETED") {
     return {
-      flow: "SIGNUP_RESUME",
-      userId: user.id,
-      next: "BASIC_DETAILS",
+      flow: "LOGIN",
+      token: generateToken(user),
     };
   }
 
-  // ✅ ONLY HERE LOGIN IS ALLOWED
   return {
-    flow: "LOGIN",
-    token: generateToken(user),
+    flow: "SIGNUP_RESUME",
+    userId: user.id,
+    next: "BASIC_DETAILS",
   };
 };
+
 
 
 
@@ -251,23 +256,25 @@ validateSignupData(data);
 
   // 6️⃣ Update profile (DO NOT verify mobile here)
   await user.update({
-    password: hash,
-    role: data.role,
+  password: hash,
+  role: data.role,
 
-    full_name: data.full_name,
-    gender: data.gender,
+  full_name: data.full_name,
+  gender: data.gender,
 
-    company_name: data.company_name,
-    gst_number: data.gst_number,
-    company_address: data.company_address,
+  company_name: data.company_name,
+  gst_number: data.gst_number,
+  company_address: data.company_address,
 
-    city: data.city,
-    state: data.state,
-    pincode: data.pincode,
+  city: data.city,
+  state: data.state,
+  pincode: data.pincode,
 
-    mobile: data.mobile,
-    is_mobile_verified: false, // 🔒 MUST VERIFY VIA OTP
-  });
+  mobile: data.mobile,
+  is_mobile_verified: false,
+
+  signup_stage: "COMPLETED", // 🔥 ADD THIS
+});
 
   // 7️⃣ Send mobile OTP
     await exports.sendMobileOTP(data.mobile);
