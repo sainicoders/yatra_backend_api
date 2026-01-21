@@ -95,8 +95,15 @@ exports.verifyMobileOTP = async (req, res) => {
 
 
 exports.signup = async (req, res) => {
-  const token = await service.completeSignup(req.body);
-  res.json({ token });
+  try {
+    const data = await service.completeSignup(req.body);
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({
+      success: false,
+      message: e.message,
+    });
+  }
 };
 
 /* ================= GOOGLE LOGIN ================= */

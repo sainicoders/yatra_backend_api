@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 5000;
     console.log(" PostgreSQL connected successfully");
 
     // Sync models (later change to migrations)
-    await sequelize.sync();
+    await sequelize.sync({alter:true});
     console.log(" DB synced");
 
     // Start server

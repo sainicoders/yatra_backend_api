@@ -48,6 +48,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
       },
+        signup_stage: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: "BASIC_CREATED",
+      },
     },
     {
       tableName: "users",

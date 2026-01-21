@@ -12,30 +12,32 @@ const { sendSMS } = require("../utils/sms");
 
 /* ================= EMAIL CHECK ================= */
 exports.checkEmail = async (email) => {
-  const user = await User.findOne({ where: { email } });
+  let user = await User.findOne({ where: { email } });
 
-  // 🟢 Case 1: User exists
-  if (user) {
-    
-    if (user.signup_stage !== "COMPLETED") {
-      return {
-        flow: "SIGNUP_RESUME",
-        userId: user.id,
-        next: "MOBILE_OTP",
-      };
-    }
+  if (!user) {
+    user = await User.create({
+      email,
+      signup_stage: "EMAIL_VERIFIED",
+    });
 
-    // ✅ Fully registered user
     return {
-      flow: "LOGIN",
-      methods: ["PASSWORD", "EMAIL_OTP"],
+      flow: "SIGNUP",
+      userId: user.id,        // 🔥 VERY IMPORTANT
+      next: "BASIC_DETAILS",
     };
   }
 
-  // 🟢 Case 2: New email
+  if (user.signup_stage !== "COMPLETED") {
+    return {
+      flow: "SIGNUP_RESUME",
+      userId: user.id,
+      next: "BASIC_DETAILS",
+    };
+  }
+
   return {
-    flow: "SIGNUP",
-    next: "BASIC_DETAILS",
+    flow: "LOGIN",
+    methods: ["PASSWORD", "EMAIL_OTP"],
   };
 };
 
@@ -172,7 +174,7 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 
   let user = await User.findOne({ where: { mobile } });
 
-  /* 🆕 FIRST TIME MOBILE */
+  // 🆕 First time mobile
   if (!user) {
     user = await User.create({
       mobile,
@@ -187,9 +189,12 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     };
   }
 
-  /* ✅ EXISTING USER */
+  // Existing user
   if (!user.is_mobile_verified) {
-    await user.update({ is_mobile_verified: true });
+    await user.update({
+      is_mobile_verified: true,
+      signup_stage: "MOBILE_VERIFIED",
+    });
   }
 
   if (user.signup_stage === "COMPLETED") {
@@ -211,7 +216,10 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 
 function validateSignupData(data) {
   if (!data.password) throw new Error("PASSWORD_REQUIRED");
-  if (!data.mobile) throw new Error("MOBILE_REQUIRED");
+
+  // ❌ MOBILE CHECK REMOVED
+
+  if (!data.role) throw new Error("ROLE_REQUIRED");
 
   if (data.role === "PERSONAL") {
     if (!data.full_name) throw new Error("FULL_NAME_REQUIRED");
@@ -225,20 +233,21 @@ function validateSignupData(data) {
 }
 
 
+
 exports.completeSignup = async (data) => {
   let user = null;
 
-  // 1️⃣ If userId exists, trust only that
+  // 1️⃣ Trust userId first
   if (data.userId) {
     user = await User.findByPk(data.userId);
   }
 
-  // 2️⃣ If no userId, check by email (email-first signup)
-  if (!user) {
+  // 2️⃣ Fallback to email (email-first flow)
+  if (!user && data.email) {
     user = await User.findOne({ where: { email: data.email } });
   }
 
-  // 3️⃣ If still not found → create
+  // 3️⃣ 🔥 SAFETY CREATE (VERY IMPORTANT)
   if (!user) {
     user = await User.create({
       email: data.email,
@@ -250,39 +259,35 @@ exports.completeSignup = async (data) => {
   if (!["PERSONAL", "SME"].includes(data.role)) {
     throw new Error("INVALID_ROLE");
   }
-validateSignupData(data);
+
+  validateSignupData(data);
+
   // 5️⃣ Hash password
   const hash = await bcrypt.hash(data.password, 10);
 
-  // 6️⃣ Update profile (DO NOT verify mobile here)
+  // 6️⃣ Update profile
   await user.update({
-  password: hash,
-  role: data.role,
+    password: hash,
+    role: data.role,
 
-  full_name: data.full_name,
-  gender: data.gender,
+    full_name: data.full_name,
+    gender: data.gender,
 
-  company_name: data.company_name,
-  gst_number: data.gst_number,
-  company_address: data.company_address,
+    company_name: data.company_name,
+    gst_number: data.gst_number,
+    company_address: data.company_address,
 
-  city: data.city,
-  state: data.state,
-  pincode: data.pincode,
+    city: data.city,
+    state: data.state,
+    pincode: data.pincode,
 
-  mobile: data.mobile,
-  is_mobile_verified: false,
-
-  signup_stage: "COMPLETED", // 🔥 ADD THIS
-});
-
-  // 7️⃣ Send mobile OTP
-    await exports.sendMobileOTP(data.mobile);
+    is_mobile_verified: true, // already verified in mobile-first
+    signup_stage: "COMPLETED",
+  });
 
   return {
-    next: "MOBILE_OTP",
-    userId: user.id,
-    message: "Signup completed. OTP sent to mobile.",
+    flow: "LOGIN",
+    token: generateToken(user),
   };
 };
 
