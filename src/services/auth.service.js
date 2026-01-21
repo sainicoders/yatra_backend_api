@@ -12,34 +12,58 @@ const { sendSMS } = require("../utils/sms");
 
 /* ================= EMAIL CHECK ================= */
 exports.checkEmail = async (email) => {
-  let user = await User.findOne({ where: { email } });
+  const emailUser = await User.findOne({ where: { email } });
 
-  if (!user) {
-    user = await User.create({
+  // 🆕 first time email
+  if (!emailUser) {
+    const u = await User.create({
       email,
       signup_stage: "EMAIL_VERIFIED",
     });
 
     return {
       flow: "SIGNUP",
-      userId: user.id,        // 🔥 VERY IMPORTANT
+      userId: u.id,
       next: "BASIC_DETAILS",
     };
   }
 
-  if (user.signup_stage !== "COMPLETED") {
+  // 🔥 PASSWORD EXISTS → LOGIN
+  if (emailUser.password) {
     return {
-      flow: "SIGNUP_RESUME",
-      userId: user.id,
-      next: "BASIC_DETAILS",
+      flow: "LOGIN",
+      methods: ["PASSWORD", "EMAIL_OTP"],
     };
   }
 
+  /**
+   * 🧠 IMPORTANT PART
+   * Check if there is ANY completed mobile user
+   * (email will be linked later)
+   */
+  const completedMobileUser = await User.findOne({
+    where: {
+      password: { [Op.ne]: null },
+      signup_stage: "COMPLETED",
+    },
+  });
+
+  if (completedMobileUser) {
+    return {
+      flow: "LOGIN",
+      methods: ["PASSWORD", "EMAIL_OTP"],
+    };
+  }
+
+  // otherwise resume signup
   return {
-    flow: "LOGIN",
-    methods: ["PASSWORD", "EMAIL_OTP"],
+    flow: "SIGNUP_RESUME",
+    userId: emailUser.id,
+    next: "BASIC_DETAILS",
   };
 };
+
+
 
 
 /* ================= EMAIL LOGIN (PASSWORD) ================= */
