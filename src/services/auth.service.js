@@ -118,40 +118,63 @@ exports.sendEmailOTP = async (email) => {
 
 /* ================= VERIFY EMAIL OTP ================= */
 exports.verifyEmailOTP = async ({ email, otp }) => {
-  const user = await User.findOne({ where: { email } });
-  if (!user) throw new Error("USER_NOT_FOUND");
+  const emailUser = await User.findOne({ where: { email } });
+  if (!emailUser) throw new Error("USER_NOT_FOUND");
 
   const record = await OTP.findOne({
     where: {
-      user_id: user.id,
+      user_id: emailUser.id,
       target: email,
       otp,
       purpose: "EMAIL_LOGIN",
       expires_at: { [Op.gt]: new Date() },
-      verified: false,
     },
   });
 
-  if (!record || record.expires_at < new Date()) {
-    throw new Error("INVALID_OR_EXPIRED_OTP");
-  }
+  if (!record) throw new Error("INVALID_OR_EXPIRED_OTP");
 
   await record.destroy();
 
-if (user.signup_stage !== "COMPLETED") {
+  // ✅ CASE 1: Email user already completed
+  if (emailUser.signup_stage === "COMPLETED") {
+    return {
+      flow: "LOGIN",
+      token: generateToken(emailUser),
+    };
+  }
+
+  // 🔥 CASE 2: Find completed MOBILE user
+  const mobileUser = await User.findOne({
+    where: {
+      signup_stage: "COMPLETED",
+      password: { [Op.ne]: null },
+    },
+  });
+
+  if (mobileUser) {
+    // 🔗 MERGE EMAIL INTO MOBILE USER
+    await mobileUser.update({
+      email: emailUser.email,
+      is_email_verified: true,
+    });
+
+    // 🧹 REMOVE TEMP EMAIL USER
+    await emailUser.destroy();
+
+    return {
+      flow: "LOGIN",
+      token: generateToken(mobileUser),
+    };
+  }
+
+  // ❌ CASE 3: Truly incomplete user
   return {
     flow: "SIGNUP_RESUME",
-    userId: user.id,
+    userId: emailUser.id,
     next: "BASIC_DETAILS",
   };
-}
-
-return {
-  flow: "LOGIN",
-  token: generateToken(user),
 };
 
-};
 
 
 
