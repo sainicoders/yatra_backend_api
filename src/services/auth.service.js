@@ -37,11 +37,10 @@ exports.checkEmail = async (email) => {
 
 
 /* ================= EMAIL LOGIN ================= */
+
 exports.emailLogin = async ({ email, password }) => {
   const user = await User.findOne({ where: { email } });
   if (!user) throw new Error("EMAIL_NOT_REGISTERED");
-
-  // Email not verified → send OTP
   if (!user.is_email_verified) {
     await exports.sendEmailOTP(email);
     return {
@@ -58,6 +57,7 @@ exports.emailLogin = async ({ email, password }) => {
     token: generateToken(user),
   };
 };
+
 
 
 
@@ -101,7 +101,7 @@ exports.sendEmailOTP = async (email) => {
 /* ================= VERIFY EMAIL OTP ================= */
 exports.verifyEmailOTP = async ({ email, otp }) => {
   const user = await User.findOne({ where: { email } });
-
+if (!user) throw new Error("USER_NOT_FOUND");
   const record = await OTP.findOne({
     where: {
       target: email,
