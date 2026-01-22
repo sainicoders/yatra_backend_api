@@ -37,23 +37,21 @@ exports.checkEmail = async (email) => {
 
 
 /* ================= EMAIL LOGIN ================= */
-exports.verifyEmailOTP = async ({ email, otp }) => {
+exports.emailLogin = async ({ email, password }) => {
   const user = await User.findOne({ where: { email } });
+  if (!user) throw new Error("EMAIL_NOT_REGISTERED");
 
-  const record = await OTP.findOne({
-    where: {
-      target: email,
-      otp,
-      purpose: "EMAIL_VERIFY",
-      expires_at: { [Op.gt]: new Date() },
-    },
-  });
+  // Email not verified → send OTP
+  if (!user.is_email_verified) {
+    await exports.sendEmailOTP(email);
+    return {
+      flow: "OTP",
+      message: "OTP sent to email",
+    };
+  }
 
-  if (!record) throw new Error("INVALID_OR_EXPIRED_OTP");
-
-  await record.destroy();
-
-  await user.update({ is_email_verified: true });
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) throw new Error("INVALID_PASSWORD");
 
   return {
     flow: "LOGIN",
@@ -103,7 +101,6 @@ exports.sendEmailOTP = async (email) => {
 /* ================= VERIFY EMAIL OTP ================= */
 exports.verifyEmailOTP = async ({ email, otp }) => {
   const user = await User.findOne({ where: { email } });
-  if (!user) throw new Error("USER_NOT_FOUND");
 
   const record = await OTP.findOne({
     where: {
@@ -118,16 +115,14 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
   await record.destroy();
 
-  // mark email verified
-  await user.update({
-    is_email_verified: true,
-  });
+  await user.update({ is_email_verified: true });
 
   return {
     flow: "LOGIN",
     token: generateToken(user),
   };
 };
+
 
 
 /* ================= MOBILE CHECK ================= */
@@ -146,6 +141,7 @@ exports.checkMobile = async (mobile) => {
     purpose: "LOGIN",
   };
 };
+
 
 /* ================= MOBILE LOGIN ================= */
 
@@ -315,61 +311,41 @@ exports.completeSignup = async (data) => {
 
 /* ================= GOOGLE LOGIN ================= */
 exports.googleLogin = async (googleToken) => {
-  try {
-    if (!googleToken) throw new Error("GOOGLE_TOKEN_REQUIRED");
+  if (!googleToken) throw new Error("GOOGLE_TOKEN_REQUIRED");
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken: googleToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+  const ticket = await googleClient.verifyIdToken({
+    idToken: googleToken,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
 
-    const payload = ticket.getPayload();
-    const { email, name, email_verified } = payload;
+  const payload = ticket.getPayload();
+  const { email } = payload;
 
-    if (!email || !email_verified) {
-      throw new Error("GOOGLE_EMAIL_NOT_VERIFIED");
-    }
+  if (!email) throw new Error("GOOGLE_EMAIL_REQUIRED");
 
-    let user = await User.findOne({ where: { email } });
+  const user = await User.findOne({ where: { email } });
 
-    if (!user) {
-      user = await User.create({
-        email,
-        full_name: name,
-        is_email_verified: true,
-        auth_provider: "GOOGLE",
-        signup_stage: "EMAIL_VERIFIED",
-      });
+  // ❌ Account hi nahi hai
+  if (!user) {
+    throw new Error("ACCOUNT_NOT_FOUND");
+  }
 
-      return {
-        flow: "SIGNUP",
-        next: "MOBILE_OTP",
-        userId: user.id,
-      };
-    }
-
-    if (user.auth_provider && user.auth_provider !== "GOOGLE") {
-      throw new Error("USE_EMAIL_PASSWORD_LOGIN");
-    }
-
-    if (user.signup_stage !== "COMPLETED") {
-      return {
-        flow: "SIGNUP_RESUME",
-        next: "MOBILE_OTP",
-        userId: user.id,
-      };
-    }
-
+  // ✅ MAIN CONDITION (OR)
+  if (user.is_email_verified || user.is_mobile_verified) {
     return {
       flow: "LOGIN",
       token: generateToken(user),
     };
-
-  } catch (err) {
-    console.error("GOOGLE LOGIN ERROR 👉", err.message);
-    throw new Error(err.message || "GOOGLE_LOGIN_FAILED");
   }
+
+  // ❌ None verified
+  return {
+    flow: "VERIFY_REQUIRED",
+    methods: ["EMAIL_OTP", "MOBILE_OTP"],
+    userId: user.id,
+  };
 };
+
 
 
 
