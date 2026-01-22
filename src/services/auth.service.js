@@ -315,62 +315,60 @@ exports.completeSignup = async (data) => {
 
 /* ================= GOOGLE LOGIN ================= */
 exports.googleLogin = async (googleToken) => {
-  if (!googleToken) throw new Error("GOOGLE_TOKEN_REQUIRED");
+  try {
+    if (!googleToken) throw new Error("GOOGLE_TOKEN_REQUIRED");
 
-  const ticket = await googleClient.verifyIdToken({
-    idToken: googleToken,
-    audience: process.env.GOOGLE_CLIENT_ID,
-  });
-
-  const payload = ticket.getPayload();
-  const { email, name, email_verified } = payload;
-
-  if (!email || !email_verified) {
-    throw new Error("GOOGLE_EMAIL_NOT_VERIFIED");
-  }
-
-  let user = await User.findOne({ where: { email } });
-
-  if (!user) {
-    user = await User.create({
-      email,
-      full_name: name,
-      is_email_verified: true,
-      auth_provider: "GOOGLE",
-      signup_stage: "EMAIL_VERIFIED",
+    const ticket = await googleClient.verifyIdToken({
+      idToken: googleToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
 
+    const payload = ticket.getPayload();
+    const { email, name, email_verified } = payload;
+
+    if (!email || !email_verified) {
+      throw new Error("GOOGLE_EMAIL_NOT_VERIFIED");
+    }
+
+    let user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      user = await User.create({
+        email,
+        full_name: name,
+        is_email_verified: true,
+        auth_provider: "GOOGLE",
+        signup_stage: "EMAIL_VERIFIED",
+      });
+
+      return {
+        flow: "SIGNUP",
+        next: "MOBILE_OTP",
+        userId: user.id,
+      };
+    }
+
+    if (user.auth_provider && user.auth_provider !== "GOOGLE") {
+      throw new Error("USE_EMAIL_PASSWORD_LOGIN");
+    }
+
+    if (user.signup_stage !== "COMPLETED") {
+      return {
+        flow: "SIGNUP_RESUME",
+        next: "MOBILE_OTP",
+        userId: user.id,
+      };
+    }
+
     return {
-      flow: "SIGNUP",
-      next: "MOBILE_OTP",
-      userId: user.id,
+      flow: "LOGIN",
+      token: generateToken(user),
     };
+
+  } catch (err) {
+    console.error("GOOGLE LOGIN ERROR 👉", err.message);
+    throw new Error(err.message || "GOOGLE_LOGIN_FAILED");
   }
-
-  if (user.auth_provider && user.auth_provider !== "GOOGLE") {
-    throw new Error("USE_EMAIL_PASSWORD_LOGIN");
-  }
-
-  if (user.signup_stage !== "COMPLETED") {
-    return {
-      flow: "SIGNUP_RESUME",
-      next: "MOBILE_OTP",
-      userId: user.id,
-    };
-  }
-
-  const token = generateToken(user);
-
-  return {
-    flow: "LOGIN",
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-      role: user.role,
-    },
-  };
 };
 
 
