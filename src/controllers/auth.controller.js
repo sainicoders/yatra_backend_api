@@ -1,105 +1,153 @@
 const service = require("../services/auth.service");
 
+/* ================= CHECK EMAIL ================= */
 exports.checkEmail = async (req, res) => {
-  if (!req.body.email) {
-    return res.status(400).json({ message: "Email required" });
-  }
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "EMAIL_REQUIRED" });
+    }
 
-  res.json(await service.checkEmail(req.body.email));
+    const data = await service.checkEmail(email);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
 };
 
-
+/* ================= EMAIL LOGIN ================= */
 exports.emailLogin = async (req, res) => {
-  if (!req.body.email || !req.body.password) {
-    return res.status(400).json({ message: "Email and password required" });
-  }
-
   try {
-    const token = await service.emailLogin(req.body);
-    res.json({ token });
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "EMAIL_AND_PASSWORD_REQUIRED",
+      });
+    }
+
+    const data = await service.emailLogin(req.body);
+    return res.json({ success: true, data });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    return res.status(400).json({ success: false, message: e.message });
   }
 };
 
-
+/* ================= SEND EMAIL OTP ================= */
 exports.sendEmailOTP = async (req, res) => {
-  if (!req.body.email) {
-    return res.status(400).json({ message: "Email required" });
-  }
-
   try {
-    await service.sendEmailOTP(req.body.email);
-    res.json({ success: true });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "EMAIL_REQUIRED" });
+    }
+
+    const data = await service.sendEmailOTP(email);
+    return res.json({ success: true, data });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    return res.status(400).json({ success: false, message: e.message });
   }
 };
 
-
+/* ================= VERIFY EMAIL OTP ================= */
 exports.verifyEmailOTP = async (req, res) => {
-  if (!req.body.email || !req.body.otp) {
-    return res.status(400).json({ message: "Email and OTP required" });
-  }
-
   try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "EMAIL_AND_OTP_REQUIRED",
+      });
+    }
+
     const data = await service.verifyEmailOTP(req.body);
-    res.json(data);
+    return res.json({ success: true, data });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    return res.status(400).json({ success: false, message: e.message });
   }
 };
 
-exports.sendMobileOTP = async (req, res, next) => {
+/* ================= CHECK MOBILE ================= */
+exports.checkMobile = async (req, res) => {
   try {
     const { mobile } = req.body;
-
     if (!mobile) {
       return res.status(400).json({
         success: false,
-        message: "Mobile required",
+        message: "MOBILE_REQUIRED",
+      });
+    }
+
+    const data = await service.checkMobile(mobile);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+/* ================= MOBILE LOGIN ================= */
+exports.mobileLogin = async (req, res) => {
+  try {
+    const { mobile, password } = req.body;
+    if (!mobile || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "MOBILE_AND_PASSWORD_REQUIRED",
+      });
+    }
+
+    const data = await service.mobileLogin(req.body);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+/* ================= SEND MOBILE OTP ================= */
+exports.sendMobileOTP = async (req, res) => {
+  try {
+    const { mobile } = req.body;
+    if (!mobile) {
+      return res.status(400).json({
+        success: false,
+        message: "MOBILE_REQUIRED",
       });
     }
 
     const data = await service.sendMobileOTP(mobile);
-
-    return res.status(200).json({
-      success: true,
-      data, // { message, otp }
-    });
-  } catch (err) {
-    console.error("SEND OTP ERROR:", err);
-
-    // simple response (without global handler)
-    return res.status(500).json({
-      success: false,
-      message: err.message || "Failed to send OTP",
-    });
-
-    
-  }
-};
-
-exports.verifyMobileOTP = async (req, res) => {
-  if (!req.body.mobile || !req.body.otp) {
-    return res.status(400).json({ message: "Mobile and OTP required" });
-  }
-
-  try {
-    const data = await service.verifyMobileOTP(req.body);
-    res.json(data);
+    return res.json({ success: true, data });
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    return res.status(400).json({
+      success: false,
+      message: e.message || "FAILED_TO_SEND_OTP",
+    });
   }
 };
 
+/* ================= VERIFY MOBILE OTP ================= */
+exports.verifyMobileOTP = async (req, res) => {
+  try {
+    const { mobile, otp } = req.body;
+    if (!mobile || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "MOBILE_AND_OTP_REQUIRED",
+      });
+    }
 
+    const data = await service.verifyMobileOTP(req.body);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({ success: false, message: e.message });
+  }
+};
+
+/* ================= SIGNUP ================= */
 exports.signup = async (req, res) => {
   try {
     const data = await service.completeSignup(req.body);
-    res.json(data);
+    return res.json({ success: true, data });
   } catch (e) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       message: e.message,
     });

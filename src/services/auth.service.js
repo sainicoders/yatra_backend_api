@@ -11,75 +11,60 @@ const { sendSMS } = require("../utils/sms");
 
 
 /* ================= EMAIL CHECK ================= */
+
+
 exports.checkEmail = async (email) => {
-  const emailUser = await User.findOne({ where: { email } });
+  const user = await User.findOne({ where: { email } });
 
-  // 🆕 first time email
-  if (!emailUser) {
-    const u = await User.create({
-      email,
-      signup_stage: "EMAIL_VERIFIED",
-    });
+  if (!user) {
+    return { flow: "SIGNUP" };
+  }
 
+  if (!user.is_email_verified) {
+    await exports.sendEmailOTP(email);
     return {
-      flow: "SIGNUP",
-      userId: u.id,
-      next: "BASIC_DETAILS",
+      flow: "OTP",
+      message: "OTP sent to email",
     };
   }
 
-  // 🔥 PASSWORD EXISTS → LOGIN
-  if (emailUser.password) {
-    return {
-      flow: "LOGIN",
-      methods: ["PASSWORD", "EMAIL_OTP"],
-    };
-  }
+  return {
+    flow: "LOGIN",
+    methods: ["PASSWORD", "EMAIL_OTP"],
+  };
+};
 
-  /**
-   * 🧠 IMPORTANT PART
-   * Check if there is ANY completed mobile user
-   * (email will be linked later)
-   */
-  const completedMobileUser = await User.findOne({
+
+
+/* ================= EMAIL LOGIN ================= */
+exports.verifyEmailOTP = async ({ email, otp }) => {
+  const user = await User.findOne({ where: { email } });
+
+  const record = await OTP.findOne({
     where: {
-      password: { [Op.ne]: null },
-      signup_stage: "COMPLETED",
+      target: email,
+      otp,
+      purpose: "EMAIL_VERIFY",
+      expires_at: { [Op.gt]: new Date() },
     },
   });
 
-  if (completedMobileUser) {
-    return {
-      flow: "LOGIN",
-      methods: ["PASSWORD", "EMAIL_OTP"],
-    };
-  }
+  if (!record) throw new Error("INVALID_OR_EXPIRED_OTP");
 
-  // otherwise resume signup
+  await record.destroy();
+
+  await user.update({ is_email_verified: true });
+
   return {
-    flow: "SIGNUP_RESUME",
-    userId: emailUser.id,
-    next: "BASIC_DETAILS",
+    flow: "LOGIN",
+    token: generateToken(user),
   };
 };
 
 
 
 
-/* ================= EMAIL LOGIN (PASSWORD) ================= */
-exports.emailLogin = async ({ email, password }) => {
-  const user = await User.findOne({ where: { email } });
-  if (!user) throw new Error("EMAIL_NOT_REGISTERED");
-
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) throw new Error("INVALID_PASSWORD");
-
-  return { token: generateToken(user) };
-};
-
-
-
-/* ================= EMAIL OTP (LOGIN ONLY – FUTURE) ================= */
+/* ================= SEND EMAIL OTP ================= */
 exports.sendEmailOTP = async (email) => {
   const user = await User.findOne({ where: { email } });
   if (!user) throw new Error("EMAIL_NOT_REGISTERED");
@@ -91,7 +76,7 @@ exports.sendEmailOTP = async (email) => {
     where: {
       target: email,
       user_id: user.id,
-      purpose: "EMAIL_LOGIN",
+      purpose: "EMAIL_VERIFY",
     },
   });
 
@@ -100,15 +85,14 @@ exports.sendEmailOTP = async (email) => {
     user_id: user.id,
     target: email,
     otp,
-    purpose: "EMAIL_LOGIN",
+    purpose: "EMAIL_VERIFY",
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
-  // send email (SendGrid Web API)
   await sendEmail({
     to: email,
-    subject: "Your Login OTP",
-    html: emailOTPTemplate(otp), 
+    subject: "Verify your email",
+    html: emailOTPTemplate(otp),
   });
 
   return { message: "OTP sent to email" };
@@ -118,14 +102,14 @@ exports.sendEmailOTP = async (email) => {
 
 /* ================= VERIFY EMAIL OTP ================= */
 exports.verifyEmailOTP = async ({ email, otp }) => {
-  const emailUser = await User.findOne({ where: { email } });
-  if (!emailUser) throw new Error("USER_NOT_FOUND");
+  const user = await User.findOne({ where: { email } });
+  if (!user) throw new Error("USER_NOT_FOUND");
 
   const record = await OTP.findOne({
     where: {
       target: email,
       otp,
-      purpose: "EMAIL_LOGIN",
+      purpose: "EMAIL_VERIFY",
       expires_at: { [Op.gt]: new Date() },
     },
   });
@@ -134,82 +118,101 @@ exports.verifyEmailOTP = async ({ email, otp }) => {
 
   await record.destroy();
 
-  // ✅ CASE 1: already completed
-  if (emailUser.signup_stage === "COMPLETED") {
-    return {
-      flow: "LOGIN",
-      token: generateToken(emailUser),
-    };
-  }
-
-  // 🔥 CASE 2: merge into completed mobile user
-  const mobileUser = await User.findOne({
-    where: {
-      signup_stage: "COMPLETED",
-      password: { [Op.ne]: null },
-    },
+  // mark email verified
+  await user.update({
+    is_email_verified: true,
   });
 
-  if (mobileUser) {
-    // 🔥 VERY IMPORTANT ORDER
-    await emailUser.destroy();
-
-    await mobileUser.update({
-      email,
-      is_email_verified: true,
-    });
-
-    return {
-      flow: "LOGIN",
-      token: generateToken(mobileUser),
-    };
-  }
-
-  // ❌ CASE 3: resume signup
   return {
-    flow: "SIGNUP_RESUME",
-    userId: emailUser.id,
-    next: "BASIC_DETAILS",
+    flow: "LOGIN",
+    token: generateToken(user),
   };
 };
 
 
+/* ================= MOBILE CHECK ================= */
 
+exports.checkMobile = async (mobile) => {
+  const user = await User.findOne({ where: { mobile } });
 
+  if (!user) {
+    return { flow: "SIGNUP" }; // email signup
+  }
 
+  await exports.sendMobileOTP(mobile);
 
-/* ================= MOBILE OTP ================= */
-exports.sendMobileOTP = async (mobile, userId = null) => {
+  return {
+    flow: "OTP",
+    purpose: "LOGIN",
+  };
+};
+
+/* ================= MOBILE LOGIN ================= */
+
+exports.mobileLogin = async ({ mobile, password }) => {
+  const user = await User.findOne({ where: { mobile } });
+  if (!user) throw new Error("MOBILE_NOT_REGISTERED");
+
+  // 📱 Mobile not verified → send OTP
+  if (!user.is_mobile_verified) {
+    await exports.sendMobileOTP(mobile);
+    return {
+      flow: "OTP",
+      message: "OTP sent to mobile",
+    };
+  }
+
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) throw new Error("INVALID_PASSWORD");
+
+  return {
+    flow: "LOGIN",
+    token: generateToken(user),
+  };
+};
+/* ================= SEND MOBILE OTP ================= */
+
+exports.sendMobileOTP = async (mobile) => {
+  const user = await User.findOne({ where: { mobile } });
+  if (!user) throw new Error("MOBILE_NOT_REGISTERED");
+
   const otp = generateOTP();
 
+  // Remove old OTPs
   await OTP.destroy({
     where: {
       target: mobile,
-      purpose: "MOBILE_AUTH",
+      user_id: user.id,
+      purpose: "MOBILE_VERIFY",
     },
   });
 
+  // Save new OTP
   await OTP.create({
-    user_id: userId,
+    user_id: user.id,
     target: mobile,
     otp,
-    purpose: "MOBILE_AUTH",
+    purpose: "MOBILE_VERIFY",
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
-  await sendSMS(mobile, `Your OTP is ${otp}`);
+  // ✅ Send SMS using new signature
+  await sendSMS(mobile, `Your verification OTP is ${otp}`);
 
-  return { message: "OTP sent to mobile" };
+  return { message: "OTP sent to mobile",otp};
 };
 
-
+/* ================= VERIFY MOBILE OTP ================= */
 
 exports.verifyMobileOTP = async ({ mobile, otp }) => {
+  const user = await User.findOne({ where: { mobile } });
+  if (!user) throw new Error("USER_NOT_FOUND");
+
   const record = await OTP.findOne({
     where: {
       target: mobile,
       otp,
-      purpose: "MOBILE_AUTH",
+      purpose: "MOBILE_VERIFY",
       expires_at: { [Op.gt]: new Date() },
     },
   });
@@ -218,42 +221,14 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 
   await record.destroy();
 
-  let user = await User.findOne({ where: { mobile } });
-
-  // 🆕 First time mobile
-  if (!user) {
-    user = await User.create({
-      mobile,
-      is_mobile_verified: true,
-      signup_stage: "MOBILE_VERIFIED",
-    });
-
-    return {
-      flow: "SIGNUP",
-      userId: user.id,
-      next: "BASIC_DETAILS",
-    };
-  }
-
-  // Existing user
-  if (!user.is_mobile_verified) {
-    await user.update({
-      is_mobile_verified: true,
-      signup_stage: "MOBILE_VERIFIED",
-    });
-  }
-
-  if (user.signup_stage === "COMPLETED") {
-    return {
-      flow: "LOGIN",
-      token: generateToken(user),
-    };
-  }
+  // ✅ mark mobile verified
+  await user.update({
+    is_mobile_verified: true,
+  });
 
   return {
-    flow: "SIGNUP_RESUME",
-    userId: user.id,
-    next: "BASIC_DETAILS",
+    flow: "LOGIN",
+    token: generateToken(user),
   };
 };
 
@@ -261,10 +236,9 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
 
 
 function validateSignupData(data) {
+  if (!data.email) throw new Error("EMAIL_REQUIRED");
+  if (!data.mobile) throw new Error("MOBILE_REQUIRED");
   if (!data.password) throw new Error("PASSWORD_REQUIRED");
-
-  // ❌ MOBILE CHECK REMOVED
-
   if (!data.role) throw new Error("ROLE_REQUIRED");
 
   if (data.role === "PERSONAL") {
@@ -278,69 +252,64 @@ function validateSignupData(data) {
   }
 }
 
-
-
 exports.completeSignup = async (data) => {
-  let user = null;
+  const {
+    email,
+    password,
+    role,
+    full_name,
+    gender,
+    mobile,
+    company_name,
+    gst_number,
+    company_address,
+    city,
+    state,
+    pincode,
+  } = data;
 
-  // 1️⃣ Trust userId first
-  if (data.userId) {
-    user = await User.findByPk(data.userId);
-  }
-
-  // 2️⃣ Fallback to email (email-first flow)
-  if (!user && data.email) {
-    user = await User.findOne({ where: { email: data.email } });
-  }
-
-  // 3️⃣ 🔥 SAFETY CREATE (VERY IMPORTANT)
-  if (!user) {
-    user = await User.create({
-      email: data.email,
-      signup_stage: "BASIC_CREATED",
-    });
-  }
-
-  // 4️⃣ Validate role
-  if (!["PERSONAL", "SME"].includes(data.role)) {
+  if (!["PERSONAL", "SME"].includes(role)) {
     throw new Error("INVALID_ROLE");
   }
 
   validateSignupData(data);
 
-  // 5️⃣ Hash password
-  const hash = await bcrypt.hash(data.password, 10);
+  // 🔒 Check duplicate email
+  const emailExists = await User.findOne({ where: { email } });
+  if (emailExists) throw new Error("EMAIL_ALREADY_EXISTS");
 
-  // 6️⃣ Update profile
-  await user.update({
+  // 🔒 Check duplicate mobile
+  const mobileExists = await User.findOne({ where: { mobile } });
+  if (mobileExists) throw new Error("MOBILE_ALREADY_EXISTS");
+
+  const hash = await bcrypt.hash(password, 10);
+
+  const user = await User.create({
+    email,
     password: hash,
-    role: data.role,
-
-    full_name: data.full_name,
-    gender: data.gender,
-
-    company_name: data.company_name,
-    gst_number: data.gst_number,
-    company_address: data.company_address,
-
-    city: data.city,
-    state: data.state,
-    pincode: data.pincode,
-
-    is_mobile_verified: true, // already verified in mobile-first
-    signup_stage: "COMPLETED",
+    role,
+    full_name,
+    gender,
+    mobile,
+    company_name,
+    gst_number,
+    company_address,
+    city,
+    state,
+    pincode,
+    is_email_verified: false,
+    is_mobile_verified: false,
   });
 
+  // 📧📱 Send both OTPs
+  await exports.sendEmailOTP(email);
+  // await exports.sendMobileOTP(mobile);
+
   return {
-    flow: "LOGIN",
-    token: generateToken(user),
+    flow: "OTP",
+    message: "OTP sent to email",
   };
 };
-
-
-
-
-
 
 
 
