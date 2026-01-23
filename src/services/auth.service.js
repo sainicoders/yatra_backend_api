@@ -20,14 +20,13 @@ exports.checkEmail = async (email) => {
     return { flow: "SIGNUP" };
   }
 
-  if (!user.is_email_verified) {
-    await exports.sendEmailOTP(email);
-    return {
-      flow: "OTP",
-       purpose: "EMAIL_VERIFY",
-        ...otpRes,
-    };
-  }
+
+if (!user.is_email_verified) {
+  return {
+    flow: "OTP",
+    purpose: "EMAIL_VERIFY",
+  };
+}
 
   return {
     flow: "LOGIN",
@@ -118,6 +117,7 @@ if (!user) throw new Error("USER_NOT_FOUND");
     where: {
       target: email,
       otp,
+       user_id: user.id,
       purpose: "EMAIL_VERIFY",
       expires_at: { [Op.gt]: new Date() },
     },
@@ -196,6 +196,7 @@ exports.verifyEmailLoginOTP = async ({ email, otp }) => {
     where: {
       target: email,
       otp,
+        user_id: user.id,
       purpose: "EMAIL_LOGIN",
       expires_at: { [Op.gt]: new Date() },
     },
@@ -319,6 +320,7 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
     where: {
       target: mobile,
       otp,
+        user_id: user.id,
       purpose: "MOBILE_VERIFY",
       expires_at: { [Op.gt]: new Date() },
     },
@@ -395,6 +397,7 @@ exports.verifyMobileLoginOTP = async ({ mobile, otp }) => {
     where: {
       target: mobile,
       otp,
+            user_id: user.id, // ✅ FIX
       purpose: "MOBILE_LOGIN",
       expires_at: { [Op.gt]: new Date() },
     },
