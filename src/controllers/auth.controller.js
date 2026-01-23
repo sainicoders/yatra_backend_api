@@ -65,6 +65,46 @@ exports.verifyEmailOTP = async (req, res) => {
     return res.status(400).json({ success: false, message: e.message });
   }
 };
+/* ================= SEND EMAIL LOGIN OTP ================= */
+exports.sendEmailLoginOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "EMAIL_REQUIRED",
+      });
+    }
+
+    const data = await service.sendEmailLoginOTP(email);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
+/* ================= VERIFY EMAIL LOGIN OTP ================= */
+exports.verifyEmailLoginOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "EMAIL_AND_OTP_REQUIRED",
+      });
+    }
+
+    const data = await service.verifyEmailLoginOTP(req.body);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
 
 /* ================= CHECK MOBILE ================= */
 exports.checkMobile = async (req, res) => {
@@ -145,6 +185,46 @@ exports.verifyMobileOTP = async (req, res) => {
 exports.signup = async (req, res) => {
   try {
     const data = await service.completeSignup(req.body);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
+/* ================= SEND MOBILE LOGIN OTP ================= */
+exports.sendMobileLoginOTP = async (req, res) => {
+  try {
+    const { mobile } = req.body;
+    if (!mobile) {
+      return res.status(400).json({
+        success: false,
+        message: "MOBILE_REQUIRED",
+      });
+    }
+
+    const data = await service.sendMobileLoginOTP(mobile);
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({
+      success: false,
+      message: e.message,
+    });
+  }
+};
+/* ================= VERIFY MOBILE LOGIN OTP ================= */
+exports.verifyMobileLoginOTP = async (req, res) => {
+  try {
+    const { mobile, otp } = req.body;
+    if (!mobile || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "MOBILE_AND_OTP_REQUIRED",
+      });
+    }
+
+    const data = await service.verifyMobileLoginOTP(req.body);
     return res.json({ success: true, data });
   } catch (e) {
     return res.status(400).json({

@@ -24,7 +24,8 @@ exports.checkEmail = async (email) => {
     await exports.sendEmailOTP(email);
     return {
       flow: "OTP",
-      message: "OTP sent to email",
+       purpose: "EMAIL_VERIFY",
+        ...otpRes,
     };
   }
 
@@ -41,11 +42,11 @@ exports.checkEmail = async (email) => {
 exports.emailLogin = async ({ email, password }) => {
   const user = await User.findOne({ where: { email } });
   if (!user) throw new Error("EMAIL_NOT_REGISTERED");
+
   if (!user.is_email_verified) {
-    await exports.sendEmailOTP(email);
     return {
       flow: "OTP",
-      message: "OTP sent to email",
+      message: "Email not verified",
     };
   }
 
@@ -67,18 +68,27 @@ exports.sendEmailOTP = async (email) => {
   const user = await User.findOne({ where: { email } });
   if (!user) throw new Error("EMAIL_NOT_REGISTERED");
 
-  const otp = generateOTP();
-
-  // remove old OTP
-  await OTP.destroy({
+  
+  const existingOTP = await OTP.findOne({
     where: {
       target: email,
       user_id: user.id,
       purpose: "EMAIL_VERIFY",
+      expires_at: { [Op.gt]: new Date() },
     },
   });
 
-  // save new OTP
+  if (existingOTP) {
+    return {
+      message: "OTP already sent",
+      retryAfter: Math.ceil(
+        (existingOTP.expires_at - Date.now()) / 1000
+      ),
+    };
+  }
+
+  const otp = generateOTP();
+
   await OTP.create({
     user_id: user.id,
     target: email,
@@ -95,6 +105,8 @@ exports.sendEmailOTP = async (email) => {
 
   return { message: "OTP sent to email" };
 };
+
+
 
 
 
@@ -123,6 +135,82 @@ if (!user) throw new Error("USER_NOT_FOUND");
   };
 };
 
+exports.sendEmailLoginOTP = async (email) => {
+  const user = await User.findOne({ where: { email } });
+  if (!user) throw new Error("EMAIL_NOT_REGISTERED");
+  if (!user.is_email_verified) throw new Error("EMAIL_NOT_VERIFIED");
+
+  // 🔒 CHECK: already active OTP?
+  const existingOTP = await OTP.findOne({
+    where: {
+      target: email,
+      user_id: user.id,
+      purpose: "EMAIL_LOGIN",
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (existingOTP) {
+    return {
+      message: "OTP already sent",
+      retryAfter: Math.ceil(
+        (existingOTP.expires_at - Date.now()) / 1000
+      ),
+    };
+  }
+
+  const otp = generateOTP();
+
+  // 🧹 clear old (expired) OTPs
+  await OTP.destroy({
+    where: {
+      target: email,
+      user_id: user.id,
+      purpose: "EMAIL_LOGIN",
+    },
+  });
+
+  await OTP.create({
+    user_id: user.id,
+    target: email,
+    otp,
+    purpose: "EMAIL_LOGIN", // 👈 SAME LOGIC, DIFFERENT PURPOSE
+    expires_at: new Date(Date.now() + 5 * 60 * 1000),
+  });
+
+  await sendEmail({
+    to: email,
+    subject: "Login OTP",
+    html: emailOTPTemplate(otp),
+  });
+
+  return { message: "Login OTP sent to email" };
+};
+
+
+exports.verifyEmailLoginOTP = async ({ email, otp }) => {
+  const user = await User.findOne({ where: { email } });
+  if (!user) throw new Error("USER_NOT_FOUND");
+
+  const record = await OTP.findOne({
+    where: {
+      target: email,
+      otp,
+      purpose: "EMAIL_LOGIN",
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (!record) throw new Error("INVALID_OR_EXPIRED_OTP");
+
+  await record.destroy();
+
+  return {
+    flow: "LOGIN",
+    token: generateToken(user),
+  };
+};
+
 
 
 /* ================= MOBILE CHECK ================= */
@@ -131,15 +219,20 @@ exports.checkMobile = async (mobile) => {
   const user = await User.findOne({ where: { mobile } });
 
   if (!user) {
-    return { flow: "SIGNUP" }; // email signup
+    return { flow: "SIGNUP" };
   }
 
-  await exports.sendMobileOTP(mobile);
+  // ✅ already verified → direct login options
+  if (user.is_mobile_verified) {
+    return {
+      flow: "LOGIN",
+      methods: ["PASSWORD", "MOBILE_OTP"],
+    };
+  }
 
-  return {
-    flow: "OTP",
-    purpose: "LOGIN",
-  };
+  // ❌ not verified → only then send OTP
+  await exports.sendMobileOTP(mobile);
+  return { flow: "OTP" };
 };
 
 
@@ -149,12 +242,10 @@ exports.mobileLogin = async ({ mobile, password }) => {
   const user = await User.findOne({ where: { mobile } });
   if (!user) throw new Error("MOBILE_NOT_REGISTERED");
 
-  // 📱 Mobile not verified → send OTP
   if (!user.is_mobile_verified) {
-    await exports.sendMobileOTP(mobile);
     return {
       flow: "OTP",
-      message: "OTP sent to mobile",
+      message: "Mobile not verified",
     };
   }
 
@@ -166,15 +257,35 @@ exports.mobileLogin = async ({ mobile, password }) => {
     token: generateToken(user),
   };
 };
+
 /* ================= SEND MOBILE OTP ================= */
 
 exports.sendMobileOTP = async (mobile) => {
   const user = await User.findOne({ where: { mobile } });
   if (!user) throw new Error("MOBILE_NOT_REGISTERED");
 
+  // 🔒 CHECK: active OTP already exists?
+  const existingOTP = await OTP.findOne({
+    where: {
+      target: mobile,
+      user_id: user.id,
+      purpose: "MOBILE_VERIFY", // 👈 SAME LOGIC
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (existingOTP) {
+    return {
+      message: "OTP already sent",
+      retryAfter: Math.ceil(
+        (existingOTP.expires_at - Date.now()) / 1000
+      ),
+    };
+  }
+
   const otp = generateOTP();
 
-  // Remove old OTPs
+  // 🧹 clear old / expired OTPs
   await OTP.destroy({
     where: {
       target: mobile,
@@ -183,20 +294,20 @@ exports.sendMobileOTP = async (mobile) => {
     },
   });
 
-  // Save new OTP
+  // 💾 save new OTP
   await OTP.create({
     user_id: user.id,
     target: mobile,
     otp,
-    purpose: "MOBILE_VERIFY",
+    purpose: "MOBILE_VERIFY", // 👈 SAME LOGIC
     expires_at: new Date(Date.now() + 10 * 60 * 1000),
   });
 
-  // ✅ Send SMS using new signature
   await sendSMS(mobile, `Your verification OTP is ${otp}`);
 
-  return { message: "OTP sent to mobile",otp};
+  return { message: "OTP sent to mobile" };
 };
+
 
 /* ================= VERIFY MOBILE OTP ================= */
 
@@ -221,6 +332,77 @@ exports.verifyMobileOTP = async ({ mobile, otp }) => {
   await user.update({
     is_mobile_verified: true,
   });
+
+  return {
+    flow: "LOGIN",
+    token: generateToken(user),
+  };
+};
+exports.sendMobileLoginOTP = async (mobile) => {
+  const user = await User.findOne({ where: { mobile } });
+  if (!user) throw new Error("MOBILE_NOT_REGISTERED");
+  if (!user.is_mobile_verified) throw new Error("MOBILE_NOT_VERIFIED");
+
+  // 🔒 CHECK: active login OTP already exists?
+  const existingOTP = await OTP.findOne({
+    where: {
+      target: mobile,
+      user_id: user.id,
+      purpose: "MOBILE_LOGIN", // 👈 SAME LOGIC
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (existingOTP) {
+    return {
+      message: "OTP already sent",
+      retryAfter: Math.ceil(
+        (existingOTP.expires_at - Date.now()) / 1000
+      ),
+    };
+  }
+
+  const otp = generateOTP();
+
+  // 🧹 remove old OTPs (expired / used)
+  await OTP.destroy({
+    where: {
+      target: mobile,
+      user_id: user.id,
+      purpose: "MOBILE_LOGIN",
+    },
+  });
+
+  // 💾 save new login OTP
+  await OTP.create({
+    user_id: user.id,
+    target: mobile,
+    otp,
+    purpose: "MOBILE_LOGIN", // 👈 SAME LOGIC
+    expires_at: new Date(Date.now() + 5 * 60 * 1000),
+  });
+
+  await sendSMS(mobile, `Your login OTP is ${otp}`);
+
+  return { message: "Login OTP sent to mobile" };
+};
+
+exports.verifyMobileLoginOTP = async ({ mobile, otp }) => {
+  const user = await User.findOne({ where: { mobile } });
+  if (!user) throw new Error("USER_NOT_FOUND");
+
+  const record = await OTP.findOne({
+    where: {
+      target: mobile,
+      otp,
+      purpose: "MOBILE_LOGIN",
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
+
+  if (!record) throw new Error("INVALID_OR_EXPIRED_OTP");
+
+  await record.destroy();
 
   return {
     flow: "LOGIN",
@@ -325,12 +507,12 @@ exports.googleLogin = async (googleToken) => {
 
   const user = await User.findOne({ where: { email } });
 
-  // ❌ Account hi nahi hai
+ 
   if (!user) {
     throw new Error("ACCOUNT_NOT_FOUND");
   }
 
-  // ✅ MAIN CONDITION (OR)
+  
   if (user.is_email_verified || user.is_mobile_verified) {
     return {
       flow: "LOGIN",
@@ -338,7 +520,7 @@ exports.googleLogin = async (googleToken) => {
     };
   }
 
-  // ❌ None verified
+  
   return {
     flow: "VERIFY_REQUIRED",
     methods: ["EMAIL_OTP", "MOBILE_OTP"],
