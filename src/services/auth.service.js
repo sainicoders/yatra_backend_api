@@ -776,7 +776,7 @@ exports.sendMobileOTP = async (mobile) => {
 
   await sendSMS(mobile, `Your verification OTP is ${otp}`);
 
-  return { message: "OTP sent to mobile" };
+  return { message: "OTP sent to mobile",otp };
 };
 
 exports.verifyMobileOTP = async ({ mobile, otp }) => {
@@ -840,7 +840,7 @@ exports.sendMobileLoginOTP = async (mobile) => {
 
   await sendSMS(mobile, `Your login OTP is ${otp}`);
 
-  return { message: "Login OTP sent to mobile" };
+  return { message: "Login OTP sent to mobile",otp };
 };
 
 exports.verifyMobileLoginOTP = async ({ mobile, otp }) => {
