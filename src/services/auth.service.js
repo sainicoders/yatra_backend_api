@@ -545,10 +545,19 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 exports.checkEmail = async (email) => {
   const user = await User.findOne({ where: { email } });
 
-  if (!user) return { flow: "SIGNUP" };
+  if (!user) {
+    return {
+      flow: "SIGNUP",
+      next_action: "COMPLETE_SIGNUP",
+    };
+  }
 
   if (!user.is_email_verified) {
-    return { flow: "OTP", purpose: "EMAIL_VERIFY" };
+    return {
+      flow: "OTP",
+      purpose: "EMAIL_VERIFY",
+      next_action: "VERIFY_EMAIL_OTP",
+    };
   }
 
   return {
@@ -557,6 +566,7 @@ exports.checkEmail = async (email) => {
   };
 };
 
+
 /* ================= EMAIL LOGIN ================= */
 
 exports.emailLogin = async ({ email, password }) => {
@@ -564,7 +574,9 @@ exports.emailLogin = async ({ email, password }) => {
   if (!user) throw new Error("EMAIL_NOT_REGISTERED");
 
   if (!user.is_email_verified) {
-    return { flow: "OTP", purpose: "EMAIL_VERIFY" };
+    return {  flow: "OTP",
+    purpose: "EMAIL_VERIFY",
+    next_action: "VERIFY_EMAIL_OTP", };
   }
 
   const ok = await bcrypt.compare(password, user.password);
@@ -588,12 +600,16 @@ exports.sendEmailOTP = async (email) => {
     },
   });
 
-  if (existingOTP) {
-    return {
-      message: "OTP already sent",
-      retryAfter: Math.ceil((existingOTP.expires_at - Date.now()) / 1000),
-    };
-  }
+ if (existingOTP) {
+  return {
+    flow: "OTP",
+    purpose: "EMAIL_VERIFY", // or MOBILE_VERIFY
+    next_action: "VERIFY_EMAIL_OTP",
+    message: "OTP already sent",
+    retryAfter: Math.ceil((existingOTP.expires_at - Date.now()) / 1000),
+  };
+}
+
 
   const otp = generateOTP();
 
@@ -611,7 +627,10 @@ exports.sendEmailOTP = async (email) => {
     html: emailOTPTemplate(otp),
   });
 
-  return { message: "OTP sent to email" };
+  return { flow: "OTP",
+  purpose: "EMAIL_VERIFY",
+  next_action: "VERIFY_EMAIL_OTP",
+  message: "OTP sent to email"};
 };
 
 /* ================= VERIFY EMAIL OTP ================= */
@@ -656,7 +675,10 @@ exports.sendEmailLoginOTP = async (email) => {
 
   if (existingOTP) {
     return {
-      message: "OTP already sent",
+      flow: "OTP",
+    purpose: "EMAIL_LOGIN",
+    next_action: "VERIFY_EMAIL_LOGIN_OTP",
+    message: "OTP already sent",
       retryAfter: Math.ceil((existingOTP.expires_at - Date.now()) / 1000),
     };
   }
@@ -681,7 +703,10 @@ exports.sendEmailLoginOTP = async (email) => {
     html: emailOTPTemplate(otp),
   });
 
-  return { message: "Login OTP sent to email" };
+  return {  flow: "OTP",
+  purpose: "EMAIL_LOGIN",
+  next_action: "VERIFY_EMAIL_LOGIN_OTP",
+  message: "Login OTP sent to email",};
 };
 
 exports.verifyEmailLoginOTP = async ({ email, otp }) => {
@@ -710,10 +735,19 @@ exports.verifyEmailLoginOTP = async ({ email, otp }) => {
 exports.checkMobile = async (mobile) => {
   const user = await User.findOne({ where: { mobile } });
 
-  if (!user) return { flow: "SIGNUP" };
+  if (!user) {
+    return {
+      flow: "SIGNUP",
+      next_action: "COMPLETE_SIGNUP",
+    };
+  }
 
   if (!user.is_mobile_verified) {
-    return { flow: "OTP", purpose: "MOBILE_VERIFY" };
+    return {
+      flow: "OTP",
+      purpose: "MOBILE_VERIFY",
+      next_action: "VERIFY_MOBILE_OTP",
+    };
   }
 
   return {
@@ -722,6 +756,7 @@ exports.checkMobile = async (mobile) => {
   };
 };
 
+
 /* ================= MOBILE LOGIN ================= */
 
 exports.mobileLogin = async ({ mobile, password }) => {
@@ -729,7 +764,9 @@ exports.mobileLogin = async ({ mobile, password }) => {
   if (!user) throw new Error("MOBILE_NOT_REGISTERED");
 
   if (!user.is_mobile_verified) {
-    return { flow: "OTP", purpose: "MOBILE_VERIFY" };
+    return { flow: "OTP",
+    purpose: "MOBILE_VERIFY",
+    next_action: "VERIFY_MOBILE_OTP", };
   }
 
   const ok = await bcrypt.compare(password, user.password);
@@ -754,11 +791,15 @@ exports.sendMobileOTP = async (mobile) => {
   });
 
   if (existingOTP) {
-    return {
-      message: "OTP already sent",
-      retryAfter: Math.ceil((existingOTP.expires_at - Date.now()) / 1000),
-    };
-  }
+  return {
+   flow: "OTP",
+  purpose: "MOBILE_VERIFY",
+  next_action: "VERIFY_MOBILE_OTP",
+  message: "OTP already sent",
+    retryAfter: Math.ceil((existingOTP.expires_at - Date.now()) / 1000),
+  };
+}
+
 
   const otp = generateOTP();
 
@@ -776,7 +817,10 @@ exports.sendMobileOTP = async (mobile) => {
 
   await sendSMS(mobile, `Your verification OTP is ${otp}`);
 
-  return { message: "OTP sent to mobile",otp };
+  return {  flow: "OTP",
+  purpose: "MOBILE_VERIFY",
+  next_action: "VERIFY_MOBILE_OTP",
+  message: "OTP sent to mobile", otp};
 };
 
 exports.verifyMobileOTP = async ({ mobile, otp }) => {
@@ -840,7 +884,10 @@ exports.sendMobileLoginOTP = async (mobile) => {
 
   await sendSMS(mobile, `Your login OTP is ${otp}`);
 
-  return { message: "Login OTP sent to mobile",otp };
+  return { flow: "OTP",
+  purpose: "MOBILE_LOGIN",
+  next_action: "VERIFY_MOBILE_LOGIN_OTP",
+  message: "Login OTP sent to mobile",otp };
 };
 
 exports.verifyMobileLoginOTP = async ({ mobile, otp }) => {
@@ -955,7 +1002,9 @@ exports.completeSignup = async (data) => {
 
   return {
     flow: "OTP",
-    message: "OTP sent to email",
+  purpose: "EMAIL_VERIFY",
+  next_action: "VERIFY_EMAIL_OTP",
+  message: "OTP sent to email",
   };
 };
 
