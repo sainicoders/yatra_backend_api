@@ -881,6 +881,7 @@ function validateSignupData(data) {
     if (!data.company_address) throw new Error("COMPANY_ADDRESS_REQUIRED");
   }
 }
+
 exports.completeSignup = async (data) => {
   const {
     email,
@@ -897,22 +898,40 @@ exports.completeSignup = async (data) => {
     pincode,
   } = data;
 
+  // 🔐 Role validation
   if (!["PERSONAL", "SME"].includes(role)) {
     throw new Error("INVALID_ROLE");
   }
 
+  // 📋 Basic + role based validation
   validateSignupData(data);
 
   // 🔒 Check duplicate email
   const emailExists = await User.findOne({ where: { email } });
-  if (emailExists) throw new Error("EMAIL_ALREADY_EXISTS");
+
+  if (emailExists && emailExists.is_email_verified) {
+    throw new Error("EMAIL_ALREADY_EXISTS");
+  }
+
+  if (emailExists && !emailExists.is_email_verified) {
+    // 🔁 Resume signup (resend OTP)
+    await exports.sendEmailOTP(email);
+    return {
+      flow: "OTP",
+      message: "OTP resent to email",
+    };
+  }
 
   // 🔒 Check duplicate mobile
   const mobileExists = await User.findOne({ where: { mobile } });
-  if (mobileExists) throw new Error("MOBILE_ALREADY_EXISTS");
+  if (mobileExists) {
+    throw new Error("MOBILE_ALREADY_EXISTS");
+  }
 
+  // 🔐 Hash password
   const hash = await bcrypt.hash(password, 10);
 
+  // 👤 Create user
   const user = await User.create({
     email,
     password: hash,
@@ -930,15 +949,16 @@ exports.completeSignup = async (data) => {
     is_mobile_verified: false,
   });
 
-  // 📧📱 Send both OTPs
-  await exports.sendEmailOTP(email);
-  // await exports.sendMobileOTP(mobile);
+  // 📧 Send email OTP after successful signup
+  await exports.sendEmailOTP(user.email);
+  // await exports.sendMobileOTP(user.mobile);
 
   return {
     flow: "OTP",
     message: "OTP sent to email",
   };
 };
+
 
 /* ================= GOOGLE LOGIN ================= */
 
@@ -956,7 +976,7 @@ exports.googleLogin = async (googleToken) => {
   const user = await User.findOne({ where: { email } });
   if (!user) throw new Error("ACCOUNT_NOT_FOUND");
 
-  if (user.is_email_verified) {
+  if (user.is_email_verified || user.is_mobile_verified) {
     return { flow: "LOGIN", token: generateToken(user) };
   }
 
