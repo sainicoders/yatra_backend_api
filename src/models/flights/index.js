@@ -1,45 +1,47 @@
-const sequelize = require("../../config/db");
-const { DataTypes } = require("sequelize");
+module.exports = (sequelize, DataTypes, db) => {
 
-const Flight = require("./flight.model")(sequelize, DataTypes);
-const FlightBooking = require("./flightBooking.model")(sequelize, DataTypes);
-const FlightPassenger = require("./flightPassenger.model")(sequelize, DataTypes);
-const { User } = require("../index"); 
-/* ================= RELATIONS ================= */
+  const Flight = require("./flight.model")(sequelize, DataTypes);
+  const FlightBooking = require("./flightBooking.model")(sequelize, DataTypes);
+  const FlightPassenger = require("./flightPassenger.model")(sequelize, DataTypes);
 
-/* Flight → Bookings */
-Flight.hasMany(FlightBooking, {
-  foreignKey: "flight_id",
-  as: "bookings",
-});
+  /* ================= RELATIONS ================= */
 
-FlightBooking.belongsTo(Flight, {
-  foreignKey: "flight_id",
-  as: "flight",
-});
+  // Flight → Bookings
+  Flight.hasMany(FlightBooking, {
+    foreignKey: "flight_id",
+    as: "bookings",
+  });
 
-/* Booking → Passengers */
-FlightBooking.hasMany(FlightPassenger, {
-  foreignKey: "booking_id",
-  as: "passengers",
-});
+  FlightBooking.belongsTo(Flight, {
+    foreignKey: "flight_id",
+    as: "flight",
+  });
 
-FlightPassenger.belongsTo(FlightBooking, {
-  foreignKey: "booking_id",
-  as: "booking",
-});
-User.hasMany(FlightBooking, {
-  foreignKey: "user_id",
-  as: "bookings",
-});
+  // Booking → Passengers
+  FlightBooking.hasMany(FlightPassenger, {
+    foreignKey: "booking_id",
+    as: "passengers",
+  });
 
-FlightBooking.belongsTo(User, {
-  foreignKey: "user_id",
-  as: "user",
-});
-module.exports = {
-  Flight,
-  FlightBooking,
-  FlightPassenger,
+  FlightPassenger.belongsTo(FlightBooking, {
+    foreignKey: "booking_id",
+    as: "booking",
+  });
+
+  // User → Bookings
+  db.User.hasMany(FlightBooking, {
+    foreignKey: "user_id",
+    as: "bookings",
+  });
+
+  FlightBooking.belongsTo(db.User, {
+    foreignKey: "user_id",
+    as: "user",
+  });
+
+  return {
+    Flight,
+    FlightBooking,
+    FlightPassenger,
+  };
 };
-
